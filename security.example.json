@@ -1,0 +1,18 @@
+{
+  "injection_patterns": [
+    "forward all emails",
+    "add bcc",
+    "change reply-to",
+    "disable approvals",
+    "skip review",
+    "delete production"
+  ],
+  "injection_regex": [
+    "\\b(?:turn off|disable|skip)\\b.{0,20}\\b(?:guardrail|approval|review|policy)s?\\b"
+  ],
+  "enable_llm_judge": false,
+  "enable_transformers": false,
+  "transformers_model": "protectai/deberta-v3-base-prompt-injection-v2",
+  "block_threshold": 0.75,
+  "approval_threshold": 0.4
+}

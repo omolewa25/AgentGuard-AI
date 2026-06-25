@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "deploy_service": {
+      "risk": "high",
+      "requires_approval": true,
+      "allowed_roles": ["platform_engineer", "admin"],
+      "conditions": [
+        {
+          "if": "env == 'production' and user_role != 'admin'",
+          "then": "deny",
+          "reason": "Only admins may deploy to production."
+        },
+        {
+          "if": "env == 'production'",
+          "then": "require_approval",
+          "reason": "Production deploys require human sign-off."
+        }
+      ]
+    },
+    "send_email": {
+      "allowed_roles": ["operator", "admin"],
+      "conditions": [
+        {
+          "if": "external == true",
+          "then": "require_approval",
+          "reason": "Sending to an external recipient requires approval."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgentGuard AI — Governance Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --panel: #141a2a;
+    --panel-2: #1b2235;
+    --border: #263048;
+    --text: #e6ebf5;
+    --muted: #8a96b0;
+    --accent: #5b8cff;
+    --green: #2fbf71;
+    --amber: #f0b429;
+    --red: #f0556d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #121829, #0b0f1a);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header .brand span { color: var(--accent); }
+  header .actions { display: flex; gap: 10px; align-items: center; }
+  .muted { color: var(--muted); }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    transition: background .15s, border-color .15s;
+  }
+  button:hover { background: #232c44; border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.approve { background: rgba(47,191,113,.15); border-color: var(--green); color: var(--green); }
+  button.reject { background: rgba(240,85,109,.12); border-color: var(--red); color: var(--red); }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .card .value { font-size: 30px; font-weight: 650; margin-top: 6px; }
+  .card.alert .value { color: var(--red); }
+  .card.warn .value { color: var(--amber); }
+  .card.ok .value { color: var(--green); }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 22px; overflow: hidden; }
+  section h2 { font-size: 14px; margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 18px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: var(--mono); font-size: 12px; color: #b9c6e6; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .pill.pending { background: rgba(240,180,41,.15); color: var(--amber); }
+  .pill.approved { background: rgba(47,191,113,.15); color: var(--green); }
+  .pill.rejected { background: rgba(240,85,109,.15); color: var(--red); }
+  .ev { font-family: var(--mono); font-size: 12px; }
+  .ev.danger { color: var(--red); }
+  .ev.warn { color: var(--amber); }
+  .empty { padding: 20px 18px; color: var(--muted); font-size: 13px; }
+  .row-actions { display: flex; gap: 8px; }
+  .ts { color: var(--muted); white-space: nowrap; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>Agent<span>Guard</span> AI · Governance</h1></div>
+  <div class="actions">
+    <span id="updated" class="muted" style="font-size:12px"></span>
+    <button onclick="exportCsv()">Export compliance CSV</button>
+    <button class="primary" onclick="refresh()">Refresh</button>
+  </div>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>Pending approvals</h2>
+    <div id="approvals"></div>
+  </section>
+
+  <section>
+    <h2>Audit log <span class="muted" style="font-weight:400">· most recent</span></h2>
+    <div id="audit"></div>
+  </section>
+</main>
+
+<script>
+const DANGER = new Set(["prompt_injection_blocked", "egress_blocked", "approval_rejected"]);
+const WARN = new Set(["prompt_injection_suspected", "tool_output_flagged", "output_secrets_redacted"]);
+
+async function jget(url) { const r = await fetch(url); return r.json(); }
+
+function card(label, value, cls = "") {
+  return `<div class="card ${cls}"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+}
+
+function renderCards(s) {
+  const t = s.totals, a = s.approvals;
+  document.getElementById("cards").innerHTML = [
+    card("Agent events", t.events),
+    card("Tool executions", t.tool_executions, "ok"),
+    card("Pending approvals", a.pending, a.pending ? "warn" : ""),
+    card("Injections blocked", t.blocked_injections, t.blocked_injections ? "alert" : ""),
+    card("Egress blocked", t.egress_blocked, t.egress_blocked ? "alert" : ""),
+    card("Secrets redacted", t.secrets_redacted, t.secrets_redacted ? "warn" : ""),
+    card("Policy denials", t.policy_denied, t.policy_denied ? "alert" : ""),
+  ].join("");
+}
+
+function renderApprovals(items) {
+  const el = document.getElementById("approvals");
+  if (!items.length) { el.innerHTML = `<div class="empty">No pending approvals 🎉</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Tool</th><th>Role</th><th>Arguments</th><th>Requested</th><th></th></tr></thead><tbody>` +
+    items.map(a => `<tr>
+      <td><code>${a.tool_name}</code></td>
+      <td>${a.user_role}</td>
+      <td><code>${escapeHtml(JSON.stringify(a.tool_args))}</code></td>
+      <td class="ts">${fmt(a.created_at)}</td>
+      <td class="row-actions">
+        <button class="approve" onclick="decide('${a.id}','approve')">Approve</button>
+        <button class="reject" onclick="decide('${a.id}','reject')">Reject</button>
+      </td></tr>`).join("") + `</tbody></table>`;
+}
+
+function renderAudit(logs) {
+  const el = document.getElementById("audit");
+  if (!logs.length) { el.innerHTML = `<div class="empty">No events yet.</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Time</th><th>Event</th><th>Detail</th></tr></thead><tbody>` +
+    logs.map(l => {
+      const cls = DANGER.has(l.event_type) ? "danger" : WARN.has(l.event_type) ? "warn" : "";
+      return `<tr>
+        <td class="ts">${fmt(l.created_at)}</td>
+        <td><span class="ev ${cls}">${l.event_type}</span></td>
+        <td><code>${escapeHtml(summarize(l.payload))}</code></td>
+      </tr>`;
+    }).join("") + `</tbody></table>`;
+}
+
+function summarize(p) {
+  const parts = [];
+  if (p.tool_name) parts.push(p.tool_name);
+  if (p.matches && p.matches.length) parts.push("matches=" + JSON.stringify(p.matches));
+  if (p.decision) parts.push("decision=" + JSON.stringify(p.decision));
+  if (p.severity !== undefined) parts.push("severity=" + p.severity);
+  const s = parts.join(" · ");
+  return s.length > 160 ? s.slice(0, 160) + "…" : (s || JSON.stringify(p).slice(0, 160));
+}
+
+function escapeHtml(s) { return (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function fmt(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(); }
+
+async function decide(id, action) {
+  await fetch(`/api/approvals/${id}/${action}`, { method: "POST" });
+  refresh();
+}
+function exportCsv() { window.location = "/api/compliance/export?format=csv"; }
+
+async function refresh() {
+  const [s, approvals, logs] = await Promise.all([
+    jget("/api/stats"),
+    jget("/api/approvals?status=pending"),
+    jget("/api/audit-logs?limit=50"),
+  ]);
+  renderCards(s);
+  renderApprovals(approvals);
+  renderAudit(logs);
+  document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

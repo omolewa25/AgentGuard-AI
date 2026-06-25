@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from agentguard.providers.llm.factory import is_litellm
 from agentguard.security.config import SecurityConfig, load_security_config
 from agentguard.security.scanner import (
     CompositeScanner,
@@ -44,7 +45,8 @@ def build_scanner(
         )
 
     if config.enable_llm_judge or os.getenv("AGENTGUARD_LLM_JUDGE") == "1":
-        scanners.append(LLMJudgeScanner(model=llm_model or os.getenv("OPENAI_MODEL")))
+        provider = "litellm" if is_litellm() else "openai"
+        scanners.append(LLMJudgeScanner(model=llm_model or os.getenv("OPENAI_MODEL"), provider=provider))
 
     if len(scanners) == 1:
         return scanners[0]

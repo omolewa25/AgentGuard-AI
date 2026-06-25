@@ -140,13 +140,30 @@ class LLMJudgeScanner:
     languages that the heuristic layer misses. Fails open (severity 0) on error
     because the heuristic layer and policy gate still apply."""
 
-    def __init__(self, model: str | None = None, judge_fn: Callable[[str], dict] | None = None) -> None:
+    def __init__(self, model: str | None = None, judge_fn: Callable[[str], dict] | None = None, provider: str = "openai", completion_fn: Callable[..., Any] | None = None) -> None:
         self.model = model
         self._judge_fn = judge_fn
+        self.provider = provider
+        self._completion_fn = completion_fn
 
     def _judge(self, text: str) -> dict:
         if self._judge_fn is not None:
             return self._judge_fn(text)
+
+        if self.provider in ("litellm", "lite_llm"):
+            from agentguard.providers.llm.litellm import litellm_complete, resolve_model
+
+            content = litellm_complete(
+                resolve_model(self.model),
+                [
+                    {"role": "system", "content": _JUDGE_SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                completion_fn=self._completion_fn,
+                temperature=0,
+            )
+            return json.loads(content)
+
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
 

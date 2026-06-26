@@ -1,0 +1,11 @@
+{
+  "input": [
+    { "type": "topic", "deny": ["legal advice", "medical advice"], "on_fail": "refrain" }
+  ],
+  "output": [
+    { "type": "pii", "on_fail": "redact" },
+    { "type": "toxicity", "threshold": 0.7, "on_fail": "refrain" },
+    { "type": "grounding", "on_fail": "reask" }
+  ],
+  "max_reasks": 1
+}

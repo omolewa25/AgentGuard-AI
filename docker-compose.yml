@@ -6,4 +6,11 @@ services:
       - .env
     ports:
       - "8000:8000"
+    volumes:
+      # Persists the SQLite store (audit logs + approvals) across container restarts.
+      # Pair with AGENTGUARD_STORE=sqlite and AGENTGUARD_DB_PATH=data/agentguard.db in .env.
+      - agentguard-data:/app/data
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  agentguard-data:

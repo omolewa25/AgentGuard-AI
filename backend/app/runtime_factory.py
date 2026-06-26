@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from agentguard.core.runtime import AgentGuardRuntime
+from agentguard.guardrails.factory import build_guardrails
 from agentguard.policies.config import load_policy
 from agentguard.providers.llm.factory import build_planner
 from agentguard.providers.storage.factory import build_store
@@ -34,6 +35,16 @@ def build_runtime() -> AgentGuardRuntime:
     planner = build_planner()
     scanner = build_demo_scanner(demo)
     policy = load_policy()
-    return AgentGuardRuntime(registry=registry, planner=planner, store=store, scanner=scanner, policy=policy)
+    input_guardrails, output_guardrails, max_reasks = build_guardrails(model=os.getenv("OPENAI_MODEL"))
+    return AgentGuardRuntime(
+        registry=registry,
+        planner=planner,
+        store=store,
+        scanner=scanner,
+        policy=policy,
+        input_guardrails=input_guardrails,
+        output_guardrails=output_guardrails,
+        max_reasks=max_reasks,
+    )
 
 runtime = build_runtime()

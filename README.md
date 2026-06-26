@@ -13,6 +13,7 @@ redacted, paused for human approval, and fully audited.
 - **Policy engine** — risk- and role-based access control, optionally **config-driven** with safe conditional rules (no `eval`)
 - **Human-in-the-loop approvals** — high-risk actions pause until a human approves/rejects
 - **Layered prompt-injection detection** — heuristic + optional local model + optional LLM judge, with graded (block / approve / allow) responses
+- **Guardrails** — configurable input/output validators (PII, schema, toxicity, topic, grounding) with on-fail actions including a reask/fix loop
 - **Secret & egress controls** — redacts secrets in outputs and blocks credentials leaving via tool inputs
 - **Indirect-injection defenses** — quarantines and "spotlights" untrusted tool output
 - **Audit logging + compliance export** — every decision recorded; export evidence as JSON/CSV
@@ -29,6 +30,7 @@ agentguard/
   tools/             # Generic tool registry
   policies/          # Risk levels, policy engine, config + safe condition evaluator
   security/          # Injection detection, normalization, secrets, scanner cascade, config
+  guardrails/        # Input/output validators (PII, schema, toxicity, topic, grounding) + pipeline
   providers/         # LLM planner, storage (memory/sqlite), notifications
   analytics.py       # Dashboard stats + compliance reporting
 apps/
@@ -43,9 +45,11 @@ backend/
 ```text
 START
   -> scan_input        # prompt-injection scan (graded: block / suspect / allow)
-  -> agent_decision    # LLM planner chooses a tool or answers
+  -> guardrail_input   # input guardrails (e.g. topic) -> refrain / approve / redact
+  -> agent_decision    # LLM planner chooses a tool or answers (reask loops back here)
   -> policy_guard      # role + risk + conditional policy; egress DLP; approval gate
   -> execute_tool      # runs tool; scans/quarantines untrusted output
+  -> guardrail_output  # output guardrails (PII, toxicity, grounding) -> redact / reask / block
   -> scan_output       # redacts secrets from the final answer
 END
 ```
@@ -91,6 +95,7 @@ All configuration is via environment variables (see `.env.example`):
 | `AGENTGUARD_DB_PATH` | `agentguard.db` | SQLite file path |
 | `AGENTGUARD_POLICY_CONFIG` | — | Path to a policy file (JSON/YAML); see `policy.example.json` |
 | `AGENTGUARD_SECURITY_CONFIG` | — | Path to a security file (JSON/YAML); see `security.example.json` |
+| `AGENTGUARD_GUARDRAILS_CONFIG` | — | Path to a guardrails file (JSON/YAML); see `guardrails.example.json` |
 | `AGENTGUARD_TRANSFORMERS` | `0` | Enable local model injection scanner (needs `transformers`) |
 | `AGENTGUARD_LLM_JUDGE` | `0` | Enable LLM-as-judge injection scanner |
 
@@ -231,6 +236,43 @@ The optional model layers require an extra dependency:
 pip install transformers torch   # for AGENTGUARD_TRANSFORMERS=1
 ```
 
+## Guardrails
+
+Beyond injection scanning, AgentGuard has a configurable **guardrails** layer that
+validates inputs and outputs and decides how to respond on failure. Guardrails run as
+nodes in the runtime: input guardrails before planning, output guardrails on the answer.
+
+Validators:
+
+- **PII** (deterministic regex) — emails, phones, SSNs, card numbers → redact
+- **Schema** (deterministic) — JSON-object/required-field/type checks → reask
+- **Toxicity** (LLM) — unsafe-content scoring → refrain
+- **Topic** (LLM) — allow/deny subjects → refrain
+- **Grounding** (LLM) — answer must be supported by tool-output sources → block/reask
+
+On-fail actions: `log · redact · require_approval · reask · refrain · block`. The
+**reask** action re-prompts the model with the failure as feedback, up to `max_reasks`
+times, then falls back to a safe refusal.
+
+Enable with a config file (`AGENTGUARD_GUARDRAILS_CONFIG`, JSON or YAML); see
+`guardrails.example.json`:
+
+```json
+{
+  "input":  [{ "type": "topic", "deny": ["legal advice"], "on_fail": "refrain" }],
+  "output": [
+    { "type": "pii", "on_fail": "redact" },
+    { "type": "toxicity", "threshold": 0.7, "on_fail": "refrain" },
+    { "type": "grounding", "on_fail": "reask" }
+  ],
+  "max_reasks": 1
+}
+```
+
+LLM-based validators use the configured provider (OpenAI or LiteLLM); deterministic
+validators (PII, schema) need no model. Guardrail events appear in the audit log,
+dashboard, and compliance export.
+
 ## Tests
 
 ```bash
@@ -245,3 +287,12 @@ pytest -q
 - GitHub: [@omolewa25](https://github.com/omolewa25)
 - LinkedIn: [omolewa-adaramola](https://www.linkedin.com/in/omolewa-adaramola)
 - Email: [adaramolaomolewa25@gmail.com](mailto:adaramolaomolewa25@gmail.com)
+
+## LinkedIn description
+
+Built AgentGuard AI, a reusable secure AI agent governance framework for production-grade
+LLM applications. It provides config-driven tool governance and policy-as-code, human-in-the-loop
+approvals, layered prompt-injection defense (heuristic + model-based) with graded responses,
+a configurable guardrails layer (PII, schema, toxicity, topic, and grounding validators with a
+reask/fix loop), secret/egress data-loss controls, durable audit logging with compliance export,
+a live governance dashboard, and pluggable providers for LLMs, storage, and external actions.

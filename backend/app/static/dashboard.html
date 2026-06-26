@@ -95,8 +95,8 @@
 </main>
 
 <script>
-const DANGER = new Set(["prompt_injection_blocked", "egress_blocked", "approval_rejected"]);
-const WARN = new Set(["prompt_injection_suspected", "tool_output_flagged", "output_secrets_redacted"]);
+const DANGER = new Set(["prompt_injection_blocked", "egress_blocked", "approval_rejected", "guardrail_blocked"]);
+const WARN = new Set(["prompt_injection_suspected", "tool_output_flagged", "output_secrets_redacted", "guardrail_input", "guardrail_output", "guardrail_reask"]);
 
 async function jget(url) { const r = await fetch(url); return r.json(); }
 
@@ -113,6 +113,8 @@ function renderCards(s) {
     card("Injections blocked", t.blocked_injections, t.blocked_injections ? "alert" : ""),
     card("Egress blocked", t.egress_blocked, t.egress_blocked ? "alert" : ""),
     card("Secrets redacted", t.secrets_redacted, t.secrets_redacted ? "warn" : ""),
+    card("Guardrail blocks", t.guardrail_blocks, t.guardrail_blocks ? "alert" : ""),
+    card("Guardrail reasks", t.guardrail_reasks, t.guardrail_reasks ? "warn" : ""),
     card("Policy denials", t.policy_denied, t.policy_denied ? "alert" : ""),
   ].join("");
 }

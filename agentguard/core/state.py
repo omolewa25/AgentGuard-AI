@@ -12,3 +12,6 @@ class AgentState(TypedDict, total=False):
     blocked: bool
     force_approval: bool
     reason: str | None
+    sources: list[str]
+    reask_count: int
+    guardrail_feedback: str | None

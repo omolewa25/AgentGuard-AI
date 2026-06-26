@@ -14,6 +14,8 @@ _SECURITY_EVENTS = {
     "egress_blocked": "egress_blocked",
     "output_secrets_redacted": "secrets_redacted",
     "tool_output_flagged": "tool_outputs_flagged",
+    "guardrail_blocked": "guardrail_blocks",
+    "guardrail_reask": "guardrail_reasks",
 }
 
 

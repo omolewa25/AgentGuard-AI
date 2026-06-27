@@ -50,6 +50,11 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+reports/
+
+# AgentGuard SQLite store (durable audit logs / approvals)
+agentguard.db
+data/
 
 # Translations
 *.mo

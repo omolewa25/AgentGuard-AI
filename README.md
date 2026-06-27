@@ -155,6 +155,34 @@ Set `AGENTGUARD_DEMO=devops`, then:
 
 Behavior: the agent requests `deploy_service` → marked high risk → runtime pauses for approval.
 
+### Jenkins CI/CD (governed)
+
+The DevOps agent can drive a real Jenkins server, with every action passing through
+AgentGuard's governance:
+
+- `trigger_jenkins_build(job, parameters)` — **HIGH risk, requires approval**; roles `platform_engineer`/`admin`
+- `get_jenkins_build_status(job, build_number)` — **LOW, read-only**
+
+Configure a server (no mock mode — these tools call the live REST API):
+
+```env
+JENKINS_URL=https://jenkins.example.com
+JENKINS_USER=your_jenkins_user
+JENKINS_API_TOKEN=your_jenkins_api_token
+```
+
+```json
+{
+  "message": "Trigger the Jenkins job deploy-billing-api for the staging environment",
+  "user_role": "platform_engineer"
+}
+```
+
+Behavior: the agent requests `trigger_jenkins_build` → **egress DLP** scans the build
+parameters for leaked secrets → policy marks it high risk → the runtime **pauses for
+human approval** before the job is ever queued. Triggering only happens on
+`POST /api/approvals/{id}/approve`.
+
 ## Register your own tools
 
 ```python
@@ -275,10 +303,41 @@ dashboard, and compliance export.
 
 ## Tests
 
+Install the dev dependencies (pins `pytest` + `pytest-cov`) and run the suite:
+
 ```bash
-pip install pytest
-pytest -q
+pip install -r requirements-dev.txt
+pytest                 # full suite + coverage report
+pytest -m unit         # fast, isolated tests only
+pytest -m integration  # full-runtime end-to-end tests only
 ```
+
+Layout (`unit` vs `integration` markers are registered in `pytest.ini`):
+
+```text
+tests/
+  conftest.py        # shared fixtures (store, secret)
+  _helpers/          # reusable test doubles + factories (FakePlanner, FakeSession, ...)
+  unit/              # one module per source module; no runtime/graph
+  integration/       # drive the full AgentGuard runtime end-to-end
+```
+
+Config lives in `pytest.ini` (discovery, markers, coverage); a root `conftest.py` puts the
+repo on the import path so `pytest` works no matter how it's invoked. Coverage is reported
+on every run; the **80% floor is enforced in CI** (so partial `-m` runs don't fail locally).
+
+### Continuous integration (Jenkins)
+
+A declarative `Jenkinsfile` runs the pipeline:
+
+1. **Test** — inside a `python:3.12-slim` container: installs deps, runs **unit** then
+   **integration** tests (JUnit XML per stage), then the full suite with a
+   `--cov-fail-under=80` gate and a Cobertura coverage report.
+2. **Docker build** — on the `main` branch, builds the application image.
+
+Point a Jenkins Pipeline job at this repo (SCM = "Pipeline script from SCM"); it
+auto-discovers the `Jenkinsfile`. Requires the Docker Pipeline plugin, a Docker-capable
+agent, and (for the coverage report) the Coverage plugin.
 
 ## Author
 

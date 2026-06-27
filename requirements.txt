@@ -6,3 +6,4 @@ langchain
 langchain-openai
 langgraph
 litellm
+requests
